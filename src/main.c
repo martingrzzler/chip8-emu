@@ -1,6 +1,8 @@
+#include "SDL2/SDL.h"
 #include "chip8.h"
-#include <SDL2/SDL.h>
+#include "chip8keyboard.h"
 #include <Windows.h>
+#include <stdbool.h>
 #include <stdio.h>
 
 const char keyboard_map[CHIP8_TOTAL_KEYS] = {
@@ -10,12 +12,39 @@ const char keyboard_map[CHIP8_TOTAL_KEYS] = {
 
 int main(int argc, char **argv)
 {
+
+	if (argc < 2)
+	{
+		printf("You must provide a file to load\n");
+		return -1;
+	}
+
+	const char *filename = argv[1];
+	printf("The filename to load is: %s\n", filename);
+
+	FILE *f = fopen(filename, "rb");
+	if (!f)
+	{
+		printf("Failed to open the file");
+		return -1;
+	}
+
+	fseek(f, 0, SEEK_END);
+	long size = ftell(f);
+	fseek(f, 0, SEEK_SET);
+
+	char buf[size];
+	int res = fread(buf, size, 1, f);
+	if (res != 1)
+	{
+		printf("Failed to read from file");
+		return -1;
+	}
+
 	struct chip8 chip8;
 	chip8_init(&chip8);
-
-	chip8.registers.sound_timer = 30;
-
-	chip8_screen_draw_sprite(&chip8.screen, 1, 62, &chip8.memory.memory[0], 5);
+	chip8_load(&chip8, buf, size);
+	chip8_keyboard_set_map(&chip8.keyboard, keyboard_map);
 
 	SDL_Init(SDL_INIT_EVERYTHING);
 	SDL_Window *window = SDL_CreateWindow(
@@ -23,10 +52,10 @@ int main(int argc, char **argv)
 			SDL_WINDOWPOS_UNDEFINED,
 			SDL_WINDOWPOS_UNDEFINED,
 			CHIP8_WIDTH * CHIP8_WINDOW_SCALE,
-			CHIP8_HEIGHT * CHIP8_WINDOW_SCALE,
-			SDL_WINDOW_SHOWN);
+			CHIP8_HEIGHT * CHIP8_WINDOW_SCALE, SDL_WINDOW_SHOWN);
 
 	SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_TEXTUREACCESS_TARGET);
+
 	while (1)
 	{
 		SDL_Event event;
@@ -41,7 +70,7 @@ int main(int argc, char **argv)
 			case SDL_KEYDOWN:
 			{
 				char key = event.key.keysym.sym;
-				char vkey = chip8_keyboard_map(keyboard_map, key);
+				int vkey = chip8_keyboard_map(&chip8.keyboard, key);
 				if (vkey != -1)
 				{
 					chip8_keyboard_down(&chip8.keyboard, vkey);
@@ -52,15 +81,14 @@ int main(int argc, char **argv)
 			case SDL_KEYUP:
 			{
 				char key = event.key.keysym.sym;
-				char vkey = chip8_keyboard_map(keyboard_map, key);
+				int vkey = chip8_keyboard_map(&chip8.keyboard, key);
 				if (vkey != -1)
 				{
 					chip8_keyboard_up(&chip8.keyboard, vkey);
 				}
 			}
-
 			break;
-			}
+			};
 		}
 
 		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
@@ -84,17 +112,21 @@ int main(int argc, char **argv)
 		}
 
 		SDL_RenderPresent(renderer);
-
 		if (chip8.registers.delay_timer > 0)
 		{
-			Sleep(100);
+			Sleep(2);
 			chip8.registers.delay_timer -= 1;
 		}
+
 		if (chip8.registers.sound_timer > 0)
 		{
-			Beep(500, 100 * chip8.registers.sound_timer);
+			Beep(1000, 10 * chip8.registers.sound_timer);
 			chip8.registers.sound_timer = 0;
 		}
+
+		unsigned short opcode = chip8_memory_get_short(&chip8.memory, chip8.registers.PC);
+		chip8.registers.PC += 2;
+		chip8_exec(&chip8, opcode);
 	}
 
 out:

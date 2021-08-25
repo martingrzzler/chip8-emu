@@ -22,4 +22,4 @@ clean:
 	@del build\*
 
 run: 
-	@./bin/main.exe
+	@./bin/main.exe ./bin/INVADERS
